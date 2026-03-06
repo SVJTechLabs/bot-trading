@@ -47,7 +47,7 @@ class BotState:
         self.last_signal    = None
         self.log_buffer     = []
         self.price_history  = []
-        self.current_price  = 3312.45
+        self.current_price  = 0.0
         self.ws_clients     = []
 
 state = BotState()
