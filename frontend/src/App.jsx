@@ -97,28 +97,20 @@ function useRealPrice() {
         } catch { return false; }
     }, [updatePrice]);
 
-    const startSim = useCallback(() => {
-        setSource("simulated ~$3300 (open dashboard on your server for live)");
-        let p = 3300.0;
-        updatePrice(p);
-        setOpen(3280.0); setHigh(3320.0); setLow(3275.0);
-        return setInterval(() => {
-            p = parseFloat((p + (Math.random() - 0.492) * 0.85).toFixed(2));
-            updatePrice(p);
-        }, 1200);
-    }, [updatePrice]);
-
     useEffect(() => {
-        let simTimer = null, pollTimer = null;
+        let pollTimer = null;
         const init = async () => {
             if (await tryBackend()) { pollTimer = setInterval(tryBackend, 3000); return; }
             if (await tryGoldAPI()) { pollTimer = setInterval(tryGoldAPI, 10000); return; }
             if (await tryYahoo()) { pollTimer = setInterval(tryYahoo, 15000); return; }
-            simTimer = startSim();
+
+            // If all 3 APIs fail or rate limit, wait for GCP to recover
+            setSource("Waiting for Live Market Data (Market Closed / Connecting...)");
+            pollTimer = setInterval(init, 5000);
         };
         init();
-        return () => { clearInterval(simTimer); clearInterval(pollTimer); };
-    }, [tryBackend, tryGoldAPI, tryYahoo, startSim]);
+        return () => { clearInterval(pollTimer); };
+    }, [tryBackend, tryGoldAPI, tryYahoo]);
 
     const delta = price && prev ? parseFloat((price - prev).toFixed(2)) : 0;
     const dayChg = price && open ? parseFloat((price - open).toFixed(2)) : null;

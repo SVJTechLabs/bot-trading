@@ -180,7 +180,7 @@ async def bot_status():
     if state.bot:
         return state.bot.status()
 
-    # Demo status when bot not started
+    # Empty status when bot not started
     return {
         "bot":     "stopped",
         "mode":    state.mode,
@@ -245,7 +245,17 @@ async def get_analysis():
             "timestamp":  signal.timestamp,
         }
     except Exception as e:
-        return _demo_signal()
+        return {
+            "direction":  "WAIT",
+            "entry":      None,
+            "sl":         None,
+            "tp1":        None,
+            "tp2":        None,
+            "lot":        None,
+            "rr":         None,
+            "confidence": 0.0,
+            "reason":     "Fetching Market Data...",
+        }
 
 
 @app.get("/market/signals")
@@ -272,8 +282,17 @@ async def get_signals():
                 {"label": "News Filter",     "value": "Clear",           "ok": True},
             ]
         }
-    except Exception:
-        return {"signals": _demo_signals()}
+    except Exception as e:
+        return {
+            "signals": [
+                {"label": "Trend (EMA200)", "value": "—", "ok": False},
+                {"label": "RSI (14)",       "value": "—", "ok": False},
+                {"label": "Session",        "value": "—", "ok": False},
+                {"label": "Volatility ATR", "value": "—", "ok": False},
+                {"label": "Spread",         "value": "—", "ok": False},
+                {"label": "News Filter",    "value": "—", "ok": False},
+            ]
+        }
 
 
 # ── Trade History ────────────────────────────
@@ -382,13 +401,13 @@ async def websocket_endpoint(ws: WebSocket):
 
 def _demo_account():
     return {
-        "account_balance":    10_429.00,
-        "daily_pnl":          429.00,
-        "trades_today":       4,
+        "account_balance":    10_000.00,
+        "daily_pnl":          0.00,
+        "trades_today":       0,
         "consecutive_losses": 0,
         "drawdown":           0.0,
-        "win_rate":           0.67,
-        "total_trades":       4,
+        "win_rate":           0.0,
+        "total_trades":       0,
     }
 
 def _demo_signal():
