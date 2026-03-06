@@ -250,12 +250,12 @@ async def get_signals():
 
         return {
             "signals": [
-                {"label": "Trend (EMA200)", "value": trend,              "ok": last["trend"] != 0},
+                {"label": "Trend (EMA200)", "value": trend,              "ok": bool(last["trend"] != 0)},
                 {"label": "RSI (14)",        "value": f"{rsi} — {'Neutral' if 35<rsi<65 else 'Extreme'}",
-                                                                          "ok": 25 < rsi < 75},
-                {"label": "Session",         "value": session,           "ok": last.get("in_session", False)},
+                                                                          "ok": bool(25 < rsi < 75)},
+                {"label": "Session",         "value": session,           "ok": bool(last.get("in_session", False))},
                 {"label": "Volatility ATR",  "value": f"{round(float(last['atr']),1)} pts",
-                                                                          "ok": float(last["atr"]) > 3},
+                                                                          "ok": bool(float(last["atr"]) > 3)},
                 {"label": "Spread",          "value": "Within limit",    "ok": True},
                 {"label": "News Filter",     "value": "Clear",           "ok": True},
             ]
