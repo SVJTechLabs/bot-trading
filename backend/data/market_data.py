@@ -69,7 +69,7 @@ def _fetch_yfinance(bars: int) -> pd.DataFrame:
     if _cache["df"] is not None and time.time() - _cache["time"] < 60:
         return _cache["df"]
 
-    raw = yf.download("GC=F", period="60d", interval="15m", progress=False)
+    raw = yf.download("XAUUSD=X", period="60d", interval="15m", progress=False)
     if raw.empty:
         raise ValueError("yfinance returned empty data")
 

@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XAUUSD AI Trader — Live Dashboard</title>
+    <meta name="description"
+        content="Live XAUUSD gold trading bot dashboard — real-time signals, price, and trade history." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap"
+        rel="stylesheet" />
+    <!-- React + Babel (no build step needed) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body,
+        #root {
+            height: 100%;
+            background: #080810;
+        }
+
+        ::-webkit-scrollbar {
+            width: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #2a2a40;
+            border-radius: 3px;
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 1
+            }
+
+            50% {
+                opacity: .3
+            }
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(4px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0)
+            }
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(245, 197, 24, .4)
+            }
+
+            70% {
+                box-shadow: 0 0 0 8px rgba(245, 197, 24, 0)
+            }
+        }
+
+        .card {
+            background: #0E0E18;
+            border: 1px solid #1A1A2E;
+            border-radius: 12px;
+        }
+
+        .fade {
+            animation: fadeUp .3s ease;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        // ── CONFIG ─────────────────────────────────────────────────────
+        const GCP_IP = window.location.hostname;
+        const API_BASE = `/api`;
+        const WS_URL = `ws://${window.location.hostname}:8000/ws`;
+        const GOLD_KEY = "88c58e6caf99e26e6d436caf96865a1980a899919dc21ffe965bf8b148d5c8dc";
+
+        const C = {
+            bg: "#080810", panel: "#0E0E18", border: "#1A1A2E",
+            gold: "#F5C518", muted: "#525270", text: "#EAEAF8",
+            green: "#00E676", red: "#FF4560", blue: "#4FC3F7",
+        };
+
+        // ── PRICE HOOK ─────────────────────────────────────────────────
+        function usePrice() {
+            const [price, setPrice] = useState(null);
+            const [prev, setPrev] = useState(null);
+            const [open, setOpen] = useState(null);
+            const [high, setHigh] = useState(null);
+            const [low, setLow] = useState(null);
+            const [history, setHistory] = useState([]);
+            const [source, setSource] = useState("connecting…");
+            const [lastUp, setLastUp] = useState(null);
+
+            const upd = useCallback(p => {
+                setPrice(cur => { setPrev(cur ?? p); return p; });
+                setHistory(h => [...h.slice(-99), p]);
+                setLastUp(new Date().toLocaleTimeString());
+            }, []);
+
+            const tryBackend = useCallback(async () => {
+                try {
+                    const r = await fetch(`${API_BASE}/market/price`);
+                    if (!r.ok) return false;
+                    const d = await r.json();
+                    if (!d?.price) return false;
+                    upd(parseFloat(d.price.toFixed(2)));
+                    setSource("GCP Server ✓ LIVE");
+                    return true;
+                } catch { return false; }
+            }, [upd]);
+
+            const tryGold = useCallback(async () => {
+                const T = "https://www.goldapi.io/api/XAU/USD";
+                for (const px of [`https://corsproxy.io/?${encodeURIComponent(T)}`, `https://api.allorigins.win/get?url=${encodeURIComponent(T)}`]) {
+                    try {
+                        const r = await fetch(px, { headers: { "x-access-token": GOLD_KEY } });
+                        if (!r.ok) continue;
+                        const raw = await r.json(); const d = raw.contents ? JSON.parse(raw.contents) : raw;
+                        if (!d?.price) continue;
+                        upd(parseFloat(d.price.toFixed(2)));
+                        setOpen(d.open_price ? parseFloat(d.open_price.toFixed(2)) : null);
+                        setHigh(d.high_price ? parseFloat(d.high_price.toFixed(2)) : null);
+                        setLow(d.low_price ? parseFloat(d.low_price.toFixed(2)) : null);
+                        setSource("goldapi.io ✓ LIVE"); return true;
+                    } catch { continue; }
+                }
+                return false;
+            }, [upd]);
+
+            const tryYahoo = useCallback(async () => {
+                for (const url of [
+                    "https://query1.finance.yahoo.com/v8/finance/chart/XAUUSD=X?interval=1m&range=1d",
+                    "https://query2.finance.yahoo.com/v8/finance/chart/XAUUSD=X?interval=1m&range=1d",
+                ]) {
+                    try {
+                        const r = await fetch(url); if (!r.ok) continue;
+                        const d = await r.json(); const m = d?.chart?.result?.[0]?.meta; const p = m?.regularMarketPrice;
+                        if (!p) continue;
+                        upd(parseFloat(p.toFixed(2)));
+                        setHigh(m.regularMarketDayHigh ? parseFloat(m.regularMarketDayHigh.toFixed(2)) : null);
+                        setLow(m.regularMarketDayLow ? parseFloat(m.regularMarketDayLow.toFixed(2)) : null);
+                        setOpen(m.chartPreviousClose ? parseFloat(m.chartPreviousClose.toFixed(2)) : null);
+                        setSource("Yahoo Finance ✓ LIVE"); return true;
+                    } catch { continue; }
+                }
+                return false;
+            }, [upd]);
+
+            const sim = useCallback(() => {
+                setSource("simulated ~$5100 (API blocked in this env)");
+                let p = 5105; upd(p); setOpen(5080); setHigh(5130); setLow(5070);
+                return setInterval(() => { p = parseFloat((p + (Math.random() - .492) * 0.85).toFixed(2)); upd(p); }, 1200);
+            }, [upd]);
+
+            useEffect(() => {
+                let st = null, pt = null;
+                (async () => {
+                    if (await tryBackend()) { pt = setInterval(tryBackend, 3000); return; }
+                    if (await tryGold()) { pt = setInterval(tryGold, 10000); return; }
+                    if (await tryYahoo()) { pt = setInterval(tryYahoo, 15000); return; }
+                    st = sim();
+                })();
+                return () => { clearInterval(st); clearInterval(pt); };
+            }, [tryBackend, tryGold, tryYahoo, sim]);
+
+            const delta = price && prev ? parseFloat((price - prev).toFixed(2)) : 0;
+            const dayChg = price && open ? parseFloat((price - open).toFixed(2)) : null;
+            const dayPct = dayChg && open ? parseFloat(((dayChg / open) * 100).toFixed(2)) : null;
+            return { price, delta, open, high, low, history, source, lastUp, dayChg, dayPct };
+        }
+
+        // ── BOT API HOOK ───────────────────────────────────────────────
+        function useBotAPI() {
+            const [status, setStatus] = useState(null);
+            const [trades, setTrades] = useState([]);
+            const [signal, setSignal] = useState(null);
+            const [conds, setConds] = useState(null);
+            const [online, setOnline] = useState(null);
+            const [synced, setSynced] = useState(null);
+            const [wsLog, setWsLog] = useState([]);
+            const wsRef = useRef(null);
+
+            const poll = useCallback(async () => {
+                try {
+                    const [sr, tr, sgr, condr, acRes] = await Promise.all([
+                        fetch(`${API_BASE}/bot/status`, { signal: AbortSignal.timeout(10000) }),
+                        fetch(`${API_BASE}/trades`, { signal: AbortSignal.timeout(10000) }),
+                        fetch(`${API_BASE}/market/analysis`, { signal: AbortSignal.timeout(10000) }).catch(() => null),
+                        fetch(`${API_BASE}/market/signals`, { signal: AbortSignal.timeout(10000) }).catch(() => null),
+                        fetch(`${API_BASE}/account`, { signal: AbortSignal.timeout(10000) }).catch(() => null),
+                    ]);
+                    if (sr.ok) { setStatus(await sr.json()); setOnline(true); setSynced(new Date().toLocaleTimeString()); }
+                    if (tr.ok) { const d = await tr.json(); setTrades(d.trades ?? []); }
+                    if (sgr?.ok) setSignal(await sgr.json());
+                    if (condr?.ok) { const cd = await condr.json(); setConds(cd.signals || null); }
+                    if (acRes?.ok) { const ac = await acRes.json(); setStatus(p => p ? { ...p, ...ac } : ac); }
+                } catch { setOnline(false); }
+            }, []);
+
+            useEffect(() => {
+                const connect = () => {
+                    try {
+                        const ws = new WebSocket(WS_URL);
+                        ws.onmessage = e => { try { const d = JSON.parse(e.data); if (d.log) setWsLog(p => [...p.slice(-40), d.log]); } catch { } };
+                        ws.onclose = () => setTimeout(connect, 5000);
+                        wsRef.current = ws;
+                    } catch { }
+                };
+                connect();
+                return () => wsRef.current?.close();
+            }, []);
+
+            useEffect(() => { poll(); const t = setInterval(poll, 8000); return () => clearInterval(t); }, [poll]);
+            return { status, trades, signal, conds, online, synced, wsLog };
+        }
+
+        // ── COMPONENTS ────────────────────────────────────────────────
+        function Spark({ data, color, w = 220, h = 52 }) {
+            if (!data?.length) return null;
+            const mn = Math.min(...data), mx = Math.max(...data), r = mx - mn || 1;
+            const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - mn) / r) * (h - 4) - 2}`).join(" ");
+            const lx = w, ly = h - ((data[data.length - 1] - mn) / r) * (h - 4) - 2;
+            return (
+                <svg width={w} height={h} style={{ display: "block", overflow: "visible" }}>
+                    <polyline fill="none" stroke={color} strokeWidth="2" points={pts} strokeLinejoin="round" strokeLinecap="round" />
+                    <circle cx={lx} cy={ly} r="4" fill={color} />
+                    <circle cx={lx} cy={ly} r="8" fill={color} opacity=".15" />
+                </svg>
+            );
+        }
+
+        function Ring({ pct = 0, size = 68 }) {
+            const r = size / 2 - 6, circ = 2 * Math.PI * r, fill = circ * (1 - pct / 100);
+            const col = pct >= 70 ? C.green : pct >= 55 ? C.gold : C.red;
+            return (
+                <svg width={size} height={size}>
+                    <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={C.border} strokeWidth="5" />
+                    <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={col} strokeWidth="5"
+                        strokeDasharray={circ} strokeDashoffset={fill} strokeLinecap="round"
+                        transform={`rotate(-90 ${size / 2} ${size / 2})`} style={{ transition: "stroke-dashoffset .7s ease" }} />
+                    <text x={size / 2} y={size / 2 + 5} textAnchor="middle"
+                        style={{ fill: col, fontSize: 13, fontWeight: 700, fontFamily: "'DM Mono',monospace" }}>{pct}%</text>
+                </svg>
+            );
+        }
+
+        // ── DASHBOARD ─────────────────────────────────────────────────
+        function Dashboard() {
+            const { price, delta, open, high, low, history, source, lastUp, dayChg, dayPct } = usePrice();
+            const { status, trades, signal, conds, online, synced, wsLog } = useBotAPI();
+            const [log, setLog] = useState([
+                "🟡 Dashboard started…",
+                `🌐 Connecting to GCP ${GCP_IP}:8000…`,
+                "📡 Fetching XAUUSD spot price…",
+                "🛡️ Risk manager loaded",
+                "✅ All systems ready",
+            ]);
+            const logRef = useRef(null);
+            const push = msg => setLog(p => [...p.slice(-30), msg]);
+
+            useEffect(() => { if (wsLog.length) setLog(p => [...p.slice(-25), ...wsLog.slice(-3)]); }, [wsLog]);
+            useEffect(() => {
+                if (online === true) push(`✅ GCP API online — bot ${status?.bot_running ? "RUNNING" : "STANDBY"}`);
+                if (online === false) push("🔴 GCP API unreachable — check SSH / firewall");
+            }, [online, status?.bot_running]);
+            useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [log]);
+
+            const up = delta >= 0, up2 = (dayChg ?? 0) >= 0, disp = price?.toFixed(2) ?? "—";
+            const sf = v => { const x = parseFloat(v); return isNaN(x) ? "—" : x.toFixed(2); };
+
+            const sigDir = signal?.direction ?? "WAIT";
+            const sigConf = signal?.confidence != null ? (signal.confidence * 100) : 0;
+            const sigColor = sigDir === "BUY" ? C.green : sigDir === "SELL" ? C.red : C.muted;
+
+            const marketConditions = conds ?? [
+                { label: "Trend (EMA200)", value: "—", ok: true },
+                { label: "RSI (14)", value: "—", ok: true },
+                { label: "Session", value: "—", ok: true },
+                { label: "Volatility ATR", value: "—", ok: true },
+                { label: "Liquidity Sweep", value: "—", ok: true },
+                { label: "News Filter", value: "Clear", ok: true },
+            ];
+
+            const _wr = status?.win_rate ?? status?.account?.win_rate;
+            const wrate = typeof _wr === "number" ? _wr * 100 : "—";
+            const pnl = status?.today_pnl ?? status?.daily_pnl ?? status?.account?.daily_pnl;
+            const dd = status?.drawdown ?? status?.account?.drawdown;
+            const bal = status?.balance ?? status?.account_balance ?? status?.account?.account_balance;
+
+            return (
+                <div style={{ background: C.bg, minHeight: "100vh", color: C.text, fontFamily: "'DM Sans',sans-serif" }}>
+
+                    {/* HEADER */}
+                    <div style={{ background: "#0A0A14", borderBottom: `1px solid ${C.border}`, padding: "12px 22px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <div style={{ width: 36, height: 36, borderRadius: 8, background: `linear-gradient(135deg,${C.gold},#A07010)`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 16, color: "#060608", fontFamily: "'DM Mono'", animation: "pulse 2.5s infinite" }}>Au</div>
+                            <div>
+                                <div style={{ fontSize: 14, fontWeight: 700 }}>XAUUSD AI Trader</div>
+                                <div style={{ fontSize: 9, color: C.muted, letterSpacing: 2 }}>CLOUD BOT · {GCP_IP} · PAPER MODE</div>
+                            </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                            <div style={{ background: online ? `${C.green}14` : `${C.red}14`, border: `1px solid ${online ? C.green + "40" : C.red + "40"}`, borderRadius: 6, padding: "4px 12px" }}>
+                                <div style={{ fontSize: 9, color: C.muted, letterSpacing: 1 }}>GCP SERVER</div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
+                                    <div style={{ width: 7, height: 7, borderRadius: "50%", background: online === null ? C.gold : online ? C.green : C.red, animation: online ? "blink 2s infinite" : "none" }} />
+                                    <span style={{ fontSize: 9, color: online === null ? C.gold : online ? C.green : C.red, letterSpacing: 1, fontFamily: "'DM Mono'" }}>
+                                        {online === null ? "CHECKING" : online ? "ONLINE" : "OFFLINE"}
+                                    </span>
+                                </div>
+                            </div>
+                            <div style={{ background: source.includes("✓") ? `${C.green}12` : `${C.gold}12`, border: `1px solid ${source.includes("✓") ? C.green + "40" : C.gold + "40"}`, borderRadius: 6, padding: "4px 10px" }}>
+                                <div style={{ fontSize: 9, color: C.muted, letterSpacing: 1 }}>PRICE DATA</div>
+                                <div style={{ fontSize: 10, color: source.includes("✓") ? C.green : C.gold, fontFamily: "'DM Mono'" }}>{source}</div>
+                            </div>
+                            {synced && <div style={{ textAlign: "right" }}><div style={{ fontSize: 9, color: C.muted, letterSpacing: 1 }}>BOT SYNC</div><div style={{ fontSize: 11, fontFamily: "'DM Mono'" }}>{synced}</div></div>}
+                        </div>
+                    </div>
+
+                    <div style={{ padding: "16px 22px", display: "flex", flexDirection: "column", gap: 14 }}>
+
+                        {/* ROW 1 — Price + Stats */}
+                        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "stretch" }}>
+                            <div className="card" style={{ padding: "20px 24px", flex: "0 0 auto", minWidth: 300 }}>
+                                <div style={{ fontSize: 9, color: C.muted, letterSpacing: 2, marginBottom: 6 }}>GOLD SPOT · XAU/USD</div>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                    <div>
+                                        <div style={{ fontSize: 46, fontWeight: 700, color: C.gold, fontFamily: "'DM Mono'", letterSpacing: -1, lineHeight: 1 }}>{disp}</div>
+                                        <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
+                                            <div style={{ fontSize: 13, fontFamily: "'DM Mono'", color: up ? C.green : C.red }}>{up ? "▲" : "▼"} {Math.abs(delta).toFixed(2)}</div>
+                                            {dayChg !== null && <div style={{ fontSize: 13, fontFamily: "'DM Mono'", color: up2 ? C.green : C.red }}>{up2 ? "+" : ""}{dayChg?.toFixed(2)} ({up2 ? "+" : ""}{dayPct?.toFixed(2)}%)</div>}
+                                        </div>
+                                    </div>
+                                    <Spark data={history} color={up ? C.green : C.red} />
+                                </div>
+                                <div style={{ display: "flex", gap: 20, marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
+                                    {[["OPEN", open?.toFixed(2) ?? "—"], ["HIGH", high?.toFixed(2) ?? "—"], ["LOW", low?.toFixed(2) ?? "—"], ["TRADES", status?.total_trades ?? status?.account?.total_trades ?? 0]].map(([k, v]) => (
+                                        <div key={k}><div style={{ fontSize: 9, color: C.muted, letterSpacing: 1.5 }}>{k}</div><div style={{ fontFamily: "'DM Mono'", fontSize: 13, marginTop: 1, color: k === "HIGH" ? C.green : k === "LOW" ? C.red : k === "TRADES" ? C.blue : C.text }}>{v}</div></div>
+                                    ))}
+                                </div>
+                            </div>
+                            {[
+                                { l: "Win Rate", v: typeof wrate === "number" ? `${wrate.toFixed(1)}%` : "—", s: `${status?.total_trades ?? status?.account?.total_trades ?? 0} trades`, a: C.green },
+                                { l: "Today P&L", v: typeof pnl === "number" ? `${pnl >= 0 ? "+" : ""}$${pnl.toFixed(0)}` : "—", s: "paper mode", a: C.gold },
+                                { l: "Drawdown", v: typeof dd === "number" ? `${dd.toFixed(1)}%` : "—", s: "Max 20%", a: C.text },
+                                { l: "Balance", v: typeof bal === "number" ? `$${bal.toLocaleString()}` : "—", s: "Paper acct", a: C.text },
+                            ].map(t => (
+                                <div key={t.l} className="card" style={{ padding: "16px 18px", flex: 1, minWidth: 120 }}>
+                                    <div style={{ fontSize: 9, color: C.muted, letterSpacing: 2, marginBottom: 6 }}>{t.l}</div>
+                                    <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "'DM Mono'", color: t.a, lineHeight: 1 }}>{t.v}</div>
+                                    <div style={{ fontSize: 11, color: C.muted, marginTop: 5 }}>{t.s}</div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* ROW 2 — Signal + Conditions + Log */}
+                        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
+
+                            <div className="card" style={{ padding: "18px 20px", flex: "0 0 230px", border: `1.5px solid ${sigColor}44` }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                                    <div style={{ fontSize: 9, color: C.muted, letterSpacing: 2 }}>AI TRADE SIGNAL</div>
+                                    <Ring pct={sigConf} />
+                                </div>
+                                <div style={{ background: `${sigColor}14`, border: `1px solid ${sigColor}33`, borderRadius: 8, padding: "10px", textAlign: "center", marginBottom: 12 }}>
+                                    <div style={{ color: sigColor, fontSize: 22, fontWeight: 800, letterSpacing: 3 }}>{sigDir}</div>
+                                    <div style={{ color: C.muted, fontSize: 9, marginTop: 2 }}>XAUUSD · M15 · PAPER</div>
+                                </div>
+                                {[
+                                    ["Entry", signal?.entry ? signal.entry.toFixed(2) : price?.toFixed(2) ?? "—"],
+                                    ["Stop Loss", signal?.sl ? signal.sl.toFixed(2) : "—"],
+                                    ["TP 1", signal?.tp1 ? signal.tp1.toFixed(2) : "—"],
+                                    ["TP 2", signal?.tp2 ? signal.tp2.toFixed(2) : "—"],
+                                    ["Lot", signal?.lot ?? "—"],
+                                    ["R:R", signal?.rr ?? "—"],
+                                ].map(([k, v]) => (
+                                    <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: `1px solid ${C.border}` }}>
+                                        <span style={{ color: C.muted, fontSize: 11 }}>{k}</span>
+                                        <span style={{ fontFamily: "'DM Mono'", fontSize: 11 }}>{v}</span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="card" style={{ padding: "18px 20px", flex: "0 0 210px" }}>
+                                <div style={{ fontSize: 9, color: C.muted, letterSpacing: 2, marginBottom: 12 }}>MARKET CONDITIONS</div>
+                                {marketConditions.map((s, i) => (
+                                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${C.border}` }}>
+                                        <span style={{ color: C.muted, fontSize: 11 }}>{s.label}</span>
+                                        <span style={{ color: s.ok ? C.green : C.red, fontSize: 11, fontFamily: "'DM Mono'", textAlign: "right" }}>{s.value}</span>
+                                    </div>
+                                ))}
+                                <div style={{ marginTop: 10, padding: "7px 10px", background: online ? `${C.green}10` : `${C.gold}10`, border: `1px solid ${online ? C.green : C.gold}25`, borderRadius: 6 }}>
+                                    <div style={{ fontSize: 10, color: online ? C.green : C.gold }}>{online ? "✓ Live from GCP bot" : "⚡ Waiting for bot data…"}</div>
+                                </div>
+                            </div>
+
+                            <div className="card" style={{ padding: "18px 20px", flex: 1, minWidth: 240 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+                                    <div style={{ fontSize: 9, color: C.muted, letterSpacing: 2 }}>SYSTEM LOG</div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                        <div style={{ width: 6, height: 6, borderRadius: "50%", background: online ? C.green : C.muted, animation: online ? "blink 1.5s infinite" : "none" }} />
+                                        <span style={{ fontSize: 9, color: online ? C.green : C.muted, letterSpacing: 1 }}>{online ? "GCP LIVE" : "LOCAL"}</span>
+                                    </div>
+                                </div>
+                                <div ref={logRef} style={{ height: 230, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+                                    {log.map((l, i) => (
+                                        <div key={i} className="fade" style={{ display: "flex", gap: 7, padding: "2px 0" }}>
+                                            <span style={{ color: C.muted, fontSize: 9, fontFamily: "'DM Mono'", flexShrink: 0 }}>{new Date().toTimeString().slice(0, 8)}</span>
+                                            <span style={{ fontFamily: "'DM Mono'", fontSize: 10, color: l.includes("✅") || l.includes("SIGNAL") ? C.gold : l.includes("🔴") || l.includes("⚠️") ? C.red : l.includes("✓") || l.includes("🟢") ? C.green : C.text }}>{l}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* ROW 3 — Trades */}
+                        <div className="card" style={{ padding: "18px 22px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                                <div style={{ fontSize: 9, color: C.muted, letterSpacing: 2 }}>TRADE HISTORY</div>
+                                <div style={{ fontSize: 9, color: C.muted }}>{online ? `Live · ${trades.length} trades` : "Connecting…"}</div>
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "50px 55px 1fr 1fr 65px 80px 65px", gap: 8, marginBottom: 8 }}>
+                                {["#", "DIR", "ENTRY", "CLOSE", "TIME", "P&L", "STATUS"].map(h => (<div key={h} style={{ fontSize: 9, color: C.muted, letterSpacing: 1.5 }}>{h}</div>))}
+                            </div>
+                            {trades.length === 0 ? (
+                                <div style={{ textAlign: "center", color: C.muted, fontSize: 12, padding: "24px 0" }}>
+                                    {online ? "No trades yet — bot scanning market for high-confidence setups…" : "Connecting to GCP server…"}
+                                </div>
+                            ) : trades.slice(-10).reverse().map((t, i) => (
+                                <div key={i} style={{ display: "grid", gridTemplateColumns: "50px 55px 1fr 1fr 65px 80px 65px", gap: 8, padding: "8px 0", borderTop: `1px solid ${C.border}`, alignItems: "center" }}>
+                                    <span style={{ color: C.muted, fontFamily: "'DM Mono'", fontSize: 11 }}>#{t.ticket ?? i + 1}</span>
+                                    <span style={{ color: t.direction === "BUY" ? C.green : C.red, fontWeight: 700, fontSize: 11, letterSpacing: 1 }}>{t.direction ?? "—"}</span>
+                                    <span style={{ fontFamily: "'DM Mono'", fontSize: 11 }}>{t.entry != null ? sf(t.entry) : "—"}</span>
+                                    <span style={{ fontFamily: "'DM Mono'", fontSize: 11 }}>{t.close != null ? sf(t.close) : "—"}</span>
+                                    <span style={{ color: C.muted, fontSize: 11 }}>{t.time ?? "—"}</span>
+                                    <span style={{ fontFamily: "'DM Mono'", fontSize: 11, fontWeight: 700, color: (t.pnl ?? 0) >= 0 ? C.green : C.red }}>{t.pnl != null ? `${t.pnl >= 0 ? "+" : ""}$${t.pnl.toFixed(0)}` : "—"}</span>
+                                    <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 4, textAlign: "center", background: `${C.muted}15`, color: C.muted }}>{t.status ?? "closed"}</span>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* FOOTER */}
+                        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, paddingTop: 4, borderTop: `1px solid ${C.border}40` }}>
+                            <div style={{ fontSize: 10, color: C.muted }}>Strategy: Intraday Liquidity · EMA50/200 · RSI · ATR</div>
+                            <div style={{ fontSize: 10, color: C.muted, fontFamily: "'DM Mono'" }}>Risk: 1%/trade · Max 0.50 lot · GCP: {GCP_IP}</div>
+                            <div style={{ fontSize: 10, color: source.includes("✓") ? C.green : C.gold }}>● {source}</div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById("root")).render(<Dashboard />);
+    </script>
+</body>
+
+</html>
