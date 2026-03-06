@@ -85,6 +85,18 @@ function useRealPrice() {
         return false;
     }, [updatePrice]);
 
+    const tryBackend = useCallback(async () => {
+        try {
+            const r = await fetch(`${API_BASE}/market/price`);
+            if (!r.ok) return false;
+            const d = await r.json();
+            if (!d?.price) return false;
+            updatePrice(parseFloat(d.price.toFixed(2)));
+            setSource("GCP Server ✓ LIVE");
+            return true;
+        } catch { return false; }
+    }, [updatePrice]);
+
     const startSim = useCallback(() => {
         setSource("simulated ~$3300 (open dashboard on your server for live)");
         let p = 3300.0;
@@ -99,15 +111,14 @@ function useRealPrice() {
     useEffect(() => {
         let simTimer = null, pollTimer = null;
         const init = async () => {
-            const ok1 = await tryGoldAPI();
-            if (ok1) { pollTimer = setInterval(tryGoldAPI, 10000); return; }
-            const ok2 = await tryYahoo();
-            if (ok2) { pollTimer = setInterval(tryYahoo, 15000); return; }
+            if (await tryBackend()) { pollTimer = setInterval(tryBackend, 3000); return; }
+            if (await tryGoldAPI()) { pollTimer = setInterval(tryGoldAPI, 10000); return; }
+            if (await tryYahoo()) { pollTimer = setInterval(tryYahoo, 15000); return; }
             simTimer = startSim();
         };
         init();
         return () => { clearInterval(simTimer); clearInterval(pollTimer); };
-    }, [tryGoldAPI, tryYahoo, startSim]);
+    }, [tryBackend, tryGoldAPI, tryYahoo, startSim]);
 
     const delta = price && prev ? parseFloat((price - prev).toFixed(2)) : 0;
     const dayChg = price && open ? parseFloat((price - open).toFixed(2)) : null;
