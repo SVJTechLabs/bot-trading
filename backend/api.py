@@ -194,9 +194,21 @@ async def bot_status():
 
 @app.get("/market/price")
 async def get_price():
+    price = state.current_price
+    
+    # Force fetch if bot loop hasn't started yet
+    if price == 0:
+        try:
+            from data.market_data import get_data
+            df = get_data(bars=10)
+            price = float(df.iloc[-1]["close"])
+            state.current_price = price
+        except Exception:
+            pass
+
     return {
         "symbol": "XAUUSD",
-        "price":  state.current_price,
+        "price":  price,
         "time":   datetime.now().isoformat(),
     }
 
