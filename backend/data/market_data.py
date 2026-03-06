@@ -59,8 +59,15 @@ def _fetch_mt5(bars: int) -> pd.DataFrame:
     return _add_indicators(df)
 
 
+import time
+_cache = {"df": None, "time": 0}
+
 def _fetch_yfinance(bars: int) -> pd.DataFrame:
     import yfinance as yf
+    
+    # Cache for 60 seconds to prevent dashboard timeouts & rate limits
+    if _cache["df"] is not None and time.time() - _cache["time"] < 60:
+        return _cache["df"]
 
     raw = yf.download("GC=F", period="60d", interval="15m", progress=False)
     if raw.empty:
@@ -71,8 +78,12 @@ def _fetch_yfinance(bars: int) -> pd.DataFrame:
     df.index.name = "time"
     df.reset_index(inplace=True)
     df = df.tail(bars).reset_index(drop=True)
-    log.info(f"yfinance: fetched {len(df)} candles")
-    return _add_indicators(df)
+    
+    result = _add_indicators(df)
+    _cache["df"] = result
+    _cache["time"] = time.time()
+    log.info(f"yfinance: fetched and cached {len(result)} candles")
+    return result
 
 
 # ─────────────────────────────────────────────

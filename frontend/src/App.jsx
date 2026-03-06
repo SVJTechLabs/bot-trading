@@ -141,11 +141,11 @@ function useBotAPI() {
     const poll = useCallback(async () => {
         try {
             const [hRes, tRes, sigRes, condRes, acRes] = await Promise.all([
-                fetch(`${API_BASE}/bot/status`, { signal: AbortSignal.timeout(4000) }),
-                fetch(`${API_BASE}/trades`, { signal: AbortSignal.timeout(4000) }),
-                fetch(`${API_BASE}/market/analysis`, { signal: AbortSignal.timeout(4000) }).catch(() => null),
-                fetch(`${API_BASE}/market/signals`, { signal: AbortSignal.timeout(4000) }).catch(() => null),
-                fetch(`${API_BASE}/account`, { signal: AbortSignal.timeout(4000) }).catch(() => null),
+                fetch(`${API_BASE}/bot/status`, { signal: AbortSignal.timeout(10000) }),
+                fetch(`${API_BASE}/trades`, { signal: AbortSignal.timeout(10000) }),
+                fetch(`${API_BASE}/market/analysis`, { signal: AbortSignal.timeout(10000) }).catch(() => null),
+                fetch(`${API_BASE}/market/signals`, { signal: AbortSignal.timeout(10000) }).catch(() => null),
+                fetch(`${API_BASE}/account`, { signal: AbortSignal.timeout(10000) }).catch(() => null),
             ]);
             if (hRes.ok) {
                 setBotStatus(await hRes.json());
