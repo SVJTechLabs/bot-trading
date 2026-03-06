@@ -121,16 +121,18 @@ function useRealPrice() {
 function useBotAPI() {
     const [botStatus, setBotStatus] = useState(null);   // /bot/status
     const [trades, setTrades] = useState([]);      // /trades
-    const [signal, setSignal] = useState(null);    // /bot/signal
+    const [signal, setSignal] = useState(null);    // /market/analysis
+    const [marketConds, setMarketConds] = useState(null); // /market/signals
     const [apiOnline, setApiOnline] = useState(null);    // null=checking, true, false
     const [lastSync, setLastSync] = useState(null);
     const wsRef = useRef(null);
 
     const poll = useCallback(async () => {
         try {
-            const [hRes, tRes, sRes, acRes] = await Promise.all([
+            const [hRes, tRes, sigRes, condRes, acRes] = await Promise.all([
                 fetch(`${API_BASE}/bot/status`, { signal: AbortSignal.timeout(4000) }),
                 fetch(`${API_BASE}/trades`, { signal: AbortSignal.timeout(4000) }),
+                fetch(`${API_BASE}/market/analysis`, { signal: AbortSignal.timeout(4000) }).catch(() => null),
                 fetch(`${API_BASE}/market/signals`, { signal: AbortSignal.timeout(4000) }).catch(() => null),
                 fetch(`${API_BASE}/account`, { signal: AbortSignal.timeout(4000) }).catch(() => null),
             ]);
@@ -140,7 +142,8 @@ function useBotAPI() {
                 setLastSync(new Date().toLocaleTimeString());
             }
             if (tRes.ok) setTrades((await tRes.json()).trades ?? []);
-            if (sRes?.ok) { const sg = await sRes.json(); setSignal(Array.isArray(sg) ? sg[0] : sg); }
+            if (sigRes?.ok) { const sg = await sigRes.json(); setSignal(sg); }
+            if (condRes?.ok) { const cd = await condRes.json(); setMarketConds(cd.signals || null); }
             if (acRes?.ok) { const ac = await acRes.json(); setBotStatus(p => p ? { ...p, ...ac } : ac); }
         } catch {
             setApiOnline(false);
@@ -242,7 +245,7 @@ function StatusDot({ online }) {
 // ─────────────────────────────────────────────────────────────
 export default function Dashboard() {
     const { price, delta, open, high, low, history, source, lastUp, dayChg, dayPct } = useRealPrice();
-    const { botStatus, trades, signal, apiOnline, lastSync, wsLog } = useBotAPI();
+    const { botStatus, trades, signal, marketConds, apiOnline, lastSync, wsLog } = useBotAPI();
 
     const [localLog, setLocalLog] = useState([
         "🟡 Dashboard initializing…",
@@ -274,11 +277,12 @@ export default function Dashboard() {
     const disp = price?.toFixed(2) ?? "—";
 
     // Bot stats
-    const winRate = botStatus?.win_rate ?? "—";
-    const todayPnl = botStatus?.today_pnl ?? "—";
-    const drawdown = botStatus?.drawdown ?? "—";
-    const balance = botStatus?.balance ?? "—";
-    const tradeCount = botStatus?.total_trades ?? 0;
+    const _wr = botStatus?.win_rate ?? botStatus?.account?.win_rate;
+    const winRate = typeof _wr === "number" ? _wr * 100 : "—";
+    const todayPnl = botStatus?.daily_pnl ?? botStatus?.account?.daily_pnl ?? botStatus?.today_pnl ?? "—";
+    const drawdown = botStatus?.drawdown ?? botStatus?.account?.drawdown ?? "—";
+    const balance = botStatus?.account_balance ?? botStatus?.account?.account_balance ?? botStatus?.balance ?? "—";
+    const tradeCount = botStatus?.total_trades ?? botStatus?.account?.total_trades ?? 0;
 
     // Signal display — safe number parsing (API returns strings from CSV)
     const sf = v => { const x = parseFloat(v); return isNaN(x) ? "—" : x.toFixed(2); };
@@ -293,12 +297,12 @@ export default function Dashboard() {
     const sigColor = sigDir === "BUY" ? C.green : sigDir === "SELL" ? C.red : C.muted;
 
     // Market conditions from signal
-    const conditions = signal?.conditions ?? [
-        { label: "Trend (EMA200)", value: signal?.trend ?? "—", ok: true },
-        { label: "RSI (14)", value: signal?.rsi ? `${signal.rsi.toFixed(1)} — ${signal.rsi < 30 ? "Oversold" : signal.rsi > 70 ? "Overbought" : "Neutral"}` : "—", ok: true },
-        { label: "Session", value: signal?.session ?? "—", ok: true },
-        { label: "Volatility ATR", value: signal?.atr ? `${signal.atr.toFixed(1)} pts` : "—", ok: true },
-        { label: "Liquidity Sweep", value: signal?.sweep ?? "—", ok: !!signal?.sweep },
+    const conditions = marketConds ?? [
+        { label: "Trend (EMA200)", value: "—", ok: true },
+        { label: "RSI (14)", value: "—", ok: true },
+        { label: "Session", value: "—", ok: true },
+        { label: "Volatility ATR", value: "—", ok: true },
+        { label: "Liquidity Sweep", value: "—", ok: true },
         { label: "News Filter", value: "Clear", ok: true },
     ];
 
