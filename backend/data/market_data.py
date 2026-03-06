@@ -20,12 +20,9 @@ def get_data(bars: int = 300, source: str = "auto") -> pd.DataFrame:
     Fetch XAUUSD candles.
     Returns a clean DataFrame with OHLCV + indicators.
     """
+    # Force yfinance because MT5 terminal is stuck on 3312
     if source == "auto":
-        try:
-            return _fetch_mt5(bars)
-        except Exception:
-            log.warning("MT5 unavailable → switching to yfinance")
-            return _fetch_yfinance(bars)
+        return _fetch_yfinance(bars)
 
     if source == "mt5":
         return _fetch_mt5(bars)
@@ -69,7 +66,7 @@ def _fetch_yfinance(bars: int) -> pd.DataFrame:
     if _cache["df"] is not None and time.time() - _cache["time"] < 60:
         return _cache["df"]
 
-    raw = yf.download("XAUUSD=X", period="60d", interval="15m", progress=False)
+    raw = yf.download("GC=F", period="60d", interval="15m", progress=False)
     if raw.empty:
         raise ValueError("yfinance returned empty data")
 
