@@ -1,0 +1,5 @@
+# .gitignore for XAUUSD dashboard frontend
+node_modules/
+dist/
+.DS_Store
+.env

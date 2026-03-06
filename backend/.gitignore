@@ -1,0 +1,8 @@
+# .gitignore for XAUUSD bot backend
+__pycache__/
+*.pyc
+*.pyo
+.env
+logs/
+*.log
+.DS_Store

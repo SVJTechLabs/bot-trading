@@ -1,0 +1,24 @@
+# XAUUSD AI Trading Bot — Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core
+pandas>=2.0.0
+numpy>=1.24.0
+ta>=0.11.0
+
+# Data sources
+yfinance>=0.2.38
+
+# AI / Machine Learning
+scikit-learn>=1.3.0
+
+# API server (for dashboard connection)
+fastapi>=0.110.0
+uvicorn>=0.27.0
+
+# MT5 (Windows/Linux only — optional)
+# MetaTrader5>=5.0.45
+
+# Utilities
+python-dotenv>=1.0.0
+requests>=2.31.0
